@@ -25,7 +25,7 @@ export const consultarGuiaTracking = async (req: Request, res: Response): Promis
         const encomienda = encomiendaRows[0];
 
         // Obtener la línea de tiempo de movimientos usando estado_movimiento
-        const [historial] = await pool.query(`
+        const [historial]: any = await pool.query(`
             SELECT h.*, emp.id_empleado, p_emp.nombre_completo AS empleado
             FROM historial_movimiento h
             JOIN empleado emp ON h.id_empleado = emp.id_empleado
@@ -34,7 +34,17 @@ export const consultarGuiaTracking = async (req: Request, res: Response): Promis
             ORDER BY h.fecha_hora ASC
         `, [encomienda.id_encomienda]);
 
-        res.json({ encomienda, historial });
+        // Formateamos la respuesta EXACTAMENTE como la espera el Frontend (Tracking.tsx)
+        res.json({
+            encomienda,  // Requerido por Despacho.tsx
+            historial,   // Requerido por Despacho.tsx
+            codigo_guia: encomienda.codigo_guia, // Requerido por Tracking.tsx
+            movimientos: historial.map((h: any) => ({ // Requerido por Tracking.tsx
+                estado_movimiento: h.estado_movimiento,
+                fecha_hora: h.fecha_hora,
+                registrado_por: h.empleado
+            }))
+        });
     } catch (error) {
         console.error(error);
         res.status(500).json({ mensaje: 'Error al consultar la guía de tracking' });
@@ -64,19 +74,50 @@ export const actualizarEstadoDespacho = async (req: Request, res: Response): Pro
 
         const enc = encRows[0];
 
-        // REGLA 1: Máquina de Estados Secuencial
-        if (nuevo_estado === 'Entregado' && enc.estado_actual !== 'Llegada a Destino') {
-            res.status(400).json({ mensaje: 'Bloqueo de Seguridad: No se puede entregar un paquete que no ha registrado "Llegada a Destino".' });
+        // REGLA 1: Máquina de Estados Secuencial Estricta
+
+        // 1.1 Bloqueo para Salida (En Tránsito)
+        if (nuevo_estado === 'En Tránsito' && enc.estado_actual !== 'Registrado - Recepción en origen' && enc.estado_actual !== 'Pago consolidado en Caja') {
+            res.status(400).json({ 
+                mensaje: 'Bloqueo de Secuencia: Para enviar a ruta (En Tránsito), el paquete debe estar recién Registrado o Pagado en origen.' 
+            });
             return;
         }
 
-        // REGLA 2: Bloqueo Financiero (Si es Pago en Destino, exige que esté pagado)
-        if (nuevo_estado === 'Entregado' && enc.modalidad_pago === 'Pago en Destino') {
-            // Nota: Se asume que estado_pago está dentro de la tabla encomienda
-            if (enc.estado_pago !== 'Pagado') {
-                res.status(400).json({ mensaje: 'Bloqueo Financiero: Este paquete es "Pago en Destino" y no registra un cobro consolidado en caja.' });
-                return;
-            }
+        // 1.2 Bloqueo para Llegada (Llegada a Destino)
+        if (nuevo_estado === 'Llegada a Destino' && enc.estado_actual !== 'En Tránsito') {
+            res.status(400).json({ 
+                mensaje: 'Bloqueo de Secuencia: El paquete debe estar "En Tránsito" antes de poder registrar su Llegada a Destino.' 
+            });
+            return;
+        }
+
+        // 1.3 Bloqueo para Entrega Final (Entregado)
+        if (nuevo_estado === 'Entregado' && enc.estado_actual !== 'Llegada a Destino' && enc.estado_actual !== 'Pago consolidado en Caja') {
+            res.status(400).json({ 
+                mensaje: 'Bloqueo de Secuencia: No se puede entregar un paquete que no ha registrado su "Llegada a Destino".' 
+            });
+            return;
+        }
+
+        // REGLA 2: Bloqueo Financiero Integral
+
+        // 2.1 CANDADO PARA PAGO EN ORIGEN:
+        // No puede avanzar a ningún estado operativo si el remitente no pagó en caja
+        if (enc.modalidad_pago.includes('Origen') && enc.estado_pago !== 'Pagado') {
+            res.status(400).json({ 
+                mensaje: 'Bloqueo Financiero: Esta encomienda es "Pago en Origen" y aún figura PENDIENTE en caja. No puede salir a ruta ni actualizar su estado.' 
+            });
+            return;
+        }
+
+        // 2.2 CANDADO PARA PAGO EN DESTINO:
+        // No puede entregarse al cliente final si no canceló previamente en caja de destino
+        if (nuevo_estado === 'Entregado' && enc.modalidad_pago.includes('Destino') && enc.estado_pago !== 'Pagado') {
+            res.status(400).json({ 
+                mensaje: 'Bloqueo Financiero: Este paquete es "Pago en Destino" y no registra un cobro consolidado en caja.' 
+            });
+            return;
         }
 
         // REGLA 3: Verificación física de identidad del destinatario

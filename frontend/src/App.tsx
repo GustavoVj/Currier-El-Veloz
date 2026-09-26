@@ -11,6 +11,7 @@ import Tarifas from './pages/Tarifas';
 import Layout from './components/Layout';
 import Despacho from './pages/Despacho';
 import Trazabilidad from './pages/Trazabilidad';
+import RastreoPublico from './components/RastreoPublico';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
       <Routes>
         {/* Rutas Públicas (Sin menú lateral y sin protección) */}
         <Route path="/" element={<LandingPage />} />
+        <Route path="/rastreo" element={<RastreoPublico />} /> {/* <-- NUEVA RUTA */}
         <Route path="/login" element={<Login />} />
 
         {/* Panel Principal y Tracking interno: Acceso para TODOS los empleados logueados */}

@@ -24,23 +24,45 @@ export const obtenerPendientesCobro = async (req: Request, res: Response): Promi
     }
 };
 
-// 2. Consolidar el pago de una encomienda
+// 2. Consolidar el pago de una encomienda (Con registro en tabla PAGO)
 export const registrarCobro = async (req: Request, res: Response): Promise<void> => {
+    // Abrimos una transacción para garantizar integridad financiera
+    const connection = await pool.getConnection();
+
     try {
-        const { id_encomienda, id_empleado_cajero } = req.body;
+        await connection.beginTransaction();
 
-        // Actualizar el estado de pago en la encomienda
-        await pool.query(`UPDATE encomienda SET estado_pago = 'Pagado' WHERE id_encomienda = ?`, [id_encomienda]);
+        // Extraemos las 3 variables que ahora enviará el frontend
+        const { id_encomienda, id_empleado_cajero, monto_cobrado } = req.body;
 
-        // Registrar el hito de pago en el historial de trazabilidad
-        await pool.query(`
+        // 1. Insertar el recibo físico en la tabla PAGO
+        await connection.query(`
+            INSERT INTO pago (id_encomienda, id_empleado_caja, monto_cobrado) 
+            VALUES (?, ?, ?)
+        `, [id_encomienda, id_empleado_cajero, monto_cobrado]);
+
+        // 2. Actualizar el estado de pago en la encomienda
+        await connection.query(`
+            UPDATE encomienda SET estado_pago = 'Pagado' WHERE id_encomienda = ?
+        `, [id_encomienda]);
+
+        // 3. Registrar el hito en el historial (MANTENEMOS EL TEXTO EXACTO PARA NO ROMPER LOS BLOQUEOS)
+        await connection.query(`
             INSERT INTO historial_movimiento (id_encomienda, id_empleado, estado_movimiento) 
             VALUES (?, ?, 'Pago consolidado en Caja')
-        `, [id_encomienda, id_empleado_cajero || 1]);
+        `, [id_encomienda, id_empleado_cajero]);
 
-        res.json({ mensaje: 'Cobro registrado y consolidado exitosamente en el sistema.' });
+        // Confirmamos y guardamos la transacción
+        await connection.commit();
+
+        res.json({ mensaje: 'Cobro registrado, guardado en caja y consolidado exitosamente.' });
+
     } catch (error) {
+        // Si algo falla, revertimos todos los cambios
+        await connection.rollback();
         console.error(error);
-        res.status(500).json({ mensaje: 'Error al procesar el cobro' });
+        res.status(500).json({ mensaje: 'Error al procesar y guardar el cobro' });
+    } finally {
+        connection.release();
     }
 };

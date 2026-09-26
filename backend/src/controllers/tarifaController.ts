@@ -10,13 +10,14 @@ export const registrarTarifa = async (req: Request, res: Response): Promise<void
             id_tipo_encomienda, 
             precio_base_kilo,
             fecha_vigencia,
+            fecha_fin_vigencia, // <-- AÑADIDO AQUÍ
             estado
         } = req.body;
 
         const [resultado]: any = await pool.query(`
             INSERT INTO tarifa_envio 
-            (id_origen, id_destino, id_forma_envio, id_tipo_encomienda, precio_base_kilo, fecha_vigencia, estado) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (id_origen, id_destino, id_forma_envio, id_tipo_encomienda, precio_base_kilo, fecha_vigencia, fecha_fin_vigencia, estado) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             id_origen, 
             id_destino, 
@@ -24,6 +25,7 @@ export const registrarTarifa = async (req: Request, res: Response): Promise<void
             id_tipo_encomienda, 
             precio_base_kilo, 
             fecha_vigencia,
+            fecha_fin_vigencia || null, // <-- AÑADIDO AQUÍ (Guarda NULL si viene vacío)
             estado || 'Activo'
         ]);
 
@@ -44,20 +46,39 @@ export const obtenerDatosTarifa = async (req: Request, res: Response): Promise<v
         const [tiposEncomienda] = await pool.query('SELECT * FROM tipo_encomienda');
         
         const [tarifas] = await pool.query(`
-            SELECT t.id_tarifa, o.nombre AS origen, d.nombre AS destino, 
-                   f.nombre AS forma_envio, te.nombre AS tipo_encomienda, 
-                   t.precio_base_kilo, t.fecha_vigencia, t.estado
-            FROM tarifa_envio t
-            JOIN ciudad o ON t.id_origen = o.id_ciudad
-            JOIN ciudad d ON t.id_destino = d.id_ciudad
-            JOIN forma_envio f ON t.id_forma_envio = f.id_forma_envio
-            JOIN tipo_encomienda te ON t.id_tipo_encomienda = te.id_tipo_encomienda
-            ORDER BY t.fecha_vigencia DESC
+            SELECT 
+    t.*, /* Esto es crucial: trae id_tarifa, id_origen, id_destino, etc. */
+    c1.nombre AS origen, 
+    c2.nombre AS destino, 
+    fe.nombre AS forma_envio, 
+    te.nombre AS tipo_encomienda
+FROM tarifa_envio t
+JOIN ciudad c1 ON t.id_origen = c1.id_ciudad
+JOIN ciudad c2 ON t.id_destino = c2.id_ciudad
+JOIN forma_envio fe ON t.id_forma_envio = fe.id_forma_envio
+JOIN tipo_encomienda te ON t.id_tipo_encomienda = te.id_tipo_encomienda
         `);
 
         res.json({ ciudades, formasEnvio, tiposEncomienda, tarifas });
     } catch (error) {
         console.error(error);
         res.status(500).json({ mensaje: 'Error al cargar los datos de tarifas' });
+    }
+};
+export const actualizarTarifa = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params; // El ID de la tarifa a editar
+        const { precio_base_kilo, fecha_vigencia, fecha_fin_vigencia, estado } = req.body;
+
+        await pool.query(`
+            UPDATE tarifa_envio 
+            SET precio_base_kilo = ?, fecha_vigencia = ?, fecha_fin_vigencia = ?, estado = ?
+            WHERE id_tarifa = ?
+        `, [precio_base_kilo, fecha_vigencia, fecha_fin_vigencia || null, estado, id]);
+
+        res.json({ mensaje: 'Tarifa actualizada exitosamente' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ mensaje: 'Error al actualizar la tarifa' });
     }
 };

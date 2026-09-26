@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import axios from 'axios';
 import { Truck, ShieldAlert, CheckCircle, Search } from 'lucide-react';
 
@@ -10,12 +10,31 @@ export default function Despacho() {
   const [errorMsg, setErrorMsg] = useState('');
   const [exitoMsg, setExitoMsg] = useState('');
 
+  // Variables derivadas del historial para ocultar opciones
+  const historialEstados = datosGuia?.historial?.map((h: any) => h.estado_movimiento) || [];
+  const yaTransito = historialEstados.includes('En Tránsito');
+  const yaLlegada = historialEstados.includes('Llegada a Destino');
+  const yaEntregado = historialEstados.includes('Entregado');
+
+  // Efecto para ajustar el menú desplegable automáticamente
+  useEffect(() => {
+    if (datosGuia) {
+      if (!yaTransito) setNuevoEstado('En Tránsito');
+      else if (!yaLlegada) setNuevoEstado('Llegada a Destino');
+      else setNuevoEstado('Entregado');
+    }
+  }, [datosGuia]);
+
   const buscarGuia = async (e: FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setExitoMsg('');
+    
+    // Eliminamos espacios accidentales al inicio o final
+    const codigoLimpio = codigoBusqueda.trim(); 
+
     try {
-      const res = await axios.get(`http://localhost:3001/api/tracking/${codigoBusqueda}`);
+      const res = await axios.get(`http://localhost:3001/api/tracking/${codigoLimpio}`);
       setDatosGuia(res.data);
     } catch (err: any) {
       setErrorMsg(err.response?.data?.mensaje || 'Guía no encontrada');
@@ -26,18 +45,22 @@ export default function Despacho() {
   const ejecutarActualizacion = async () => {
     setErrorMsg('');
     setExitoMsg('');
+    const codigoLimpio = codigoBusqueda.trim();
+
     try {
       const payload = {
-        id_encomienda: datosGuia.encomienda.id_encomienda,
+        id_encomienda: datosGuia?.encomienda?.id_encomienda,
         nuevo_estado: nuevoEstado,
-        id_empleado: 2, // Ajustar según el ID del empleado despachante en sesión
+        // ID dinámico del empleado que inició sesión
+        id_empleado: localStorage.getItem('id_empleado') || '1', 
         ci_destinatario_verificacion: ciVerificacion
       };
 
       const res = await axios.post('http://localhost:3001/api/tracking/actualizar', payload);
       setExitoMsg(res.data.mensaje);
+      
       // Recargar datos actualizados
-      const actualizado = await axios.get(`http://localhost:3001/api/tracking/${codigoBusqueda}`);
+      const actualizado = await axios.get(`http://localhost:3001/api/tracking/${codigoLimpio}`);
       setDatosGuia(actualizado.data);
       setCiVerificacion('');
     } catch (err: any) {
@@ -45,7 +68,7 @@ export default function Despacho() {
     }
   };
 
-  const inputStyle = { padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100%' };
+  const inputStyle = { padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box' as const };
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto' }}>
@@ -80,65 +103,79 @@ export default function Despacho() {
         </div>
       )}
 
-      {/* Panel de Gestión de la Guía Encontrada */}
-      {datosGuia && (
+      {/* Panel de Gestión PROTEGIDO: Solo se renderiza si datosGuia y encomienda existen */}
+      {(datosGuia && datosGuia.encomienda) && (
         <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #e2e8f0', paddingBottom: '12px', marginBottom: '20px' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '20px', color: '#1e293b' }}>Guía: {datosGuia.encomienda.codigo_guia}</h3>
-              <p style={{ margin: '4px 0 0 0', color: '#64748b' }}>Modalidad: <strong>{datosGuia.encomienda.modalidad_pago}</strong> | Estado Pago: <strong style={{ color: datosGuia.encomienda.estado_pago === 'Pagado' ? '#16a34a' : '#dc2626' }}>{datosGuia.encomienda.estado_pago || 'Pendiente'}</strong></p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <span style={{ display: 'inline-block', padding: '6px 12px', backgroundColor: '#e0f2fe', color: '#0369a1', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px' }}>
-                Estado Actual: {datosGuia.encomienda.estado}
-              </span>
+              <p style={{ margin: '4px 0 0 0', color: '#64748b' }}>
+                Modalidad: <strong>{datosGuia.encomienda.modalidad_pago}</strong> | Estado Pago: <strong style={{ color: datosGuia.encomienda.estado_pago === 'Pagado' ? '#16a34a' : '#dc2626' }}>{datosGuia.encomienda.estado_pago || 'Pendiente'}</strong>
+              </p>
             </div>
           </div>
+          {/* ALERTA VISUAL DE BLOQUEO FINANCIERO */}
+          {datosGuia.encomienda.modalidad_pago.includes('Origen') && datosGuia.encomienda.estado_pago !== 'Pagado' && (
+            <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', color: '#b45309', padding: '12px', borderRadius: '6px', marginBottom: '20px', fontSize: '14px', fontWeight: '500' }}>
+              ⚠️ Atención: Esta encomienda no ha sido cobrada en Origen. El sistema no permitirá su despacho hasta que pase por Caja.
+            </div>
+          )}
 
-          {/* Selector de Nuevo Estado */}
-          <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '6px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
-            <h4 style={{ margin: '0 0 12px 0', color: '#334155' }}>Actualizar Hito Logístico</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Seleccionar Siguiente Estado</label>
-                <select style={inputStyle} value={nuevoEstado} onChange={e => setNuevoEstado(e.target.value)}>
-                  <option value="En Tránsito">En Tránsito (Salida)</option>
-                  <option value="Llegada a Destino">Llegada a Destino</option>
-                  <option value="Entregado">Entregado al Cliente Final</option>
-                </select>
+          {/* Panel de Actualización Dinámico */}
+          {!yaEntregado ? (
+            <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '6px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#334155' }}>Actualizar Hito Logístico</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                
+                <div>
+                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Seleccionar Siguiente Estado</label>
+                  <select style={inputStyle} value={nuevoEstado} onChange={e => setNuevoEstado(e.target.value)}>
+                    {/* Solo muestra "En Tránsito" si no ha pasado por ahí */}
+                    {!yaTransito && <option value="En Tránsito">En Tránsito (Salida)</option>}
+                    
+                    {/* Solo muestra "Llegada" si ya salió, pero aún no llega */}
+                    {(yaTransito && !yaLlegada) && <option value="Llegada a Destino">Llegada a Destino</option>}
+                    
+                    {/* Solo muestra "Entregado" si ya llegó */}
+                    {yaLlegada && <option value="Entregado">Entregado al Cliente Final</option>}
+                  </select>
+                </div>
+
+                {nuevoEstado === 'Entregado' && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Verificar CI Destinatario ({datosGuia.encomienda.destinatario})</label>
+                    <input 
+                      type="text" 
+                      style={inputStyle} 
+                      placeholder="Ingrese CI físico del receptor" 
+                      value={ciVerificacion} 
+                      onChange={e => setCiVerificacion(e.target.value)} 
+                    />
+                  </div>
+                )}
               </div>
 
-              {nuevoEstado === 'Entregado' && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Verificar CI Destinatario ({datosGuia.encomienda.destinatario})</label>
-                  <input 
-                    type="text" 
-                    style={inputStyle} 
-                    placeholder="Ingrese CI físico del receptor" 
-                    value={ciVerificacion} 
-                    onChange={e => setCiVerificacion(e.target.value)} 
-                  />
-                </div>
-              )}
+              <button type="button" onClick={ejecutarActualizacion} style={{ padding: '12px 24px', backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+                Confirmar y Registrar Hito
+              </button>
             </div>
+          ) : (
+            <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '16px', borderRadius: '6px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'bold' }}>
+              <CheckCircle size={24} />
+              El ciclo logístico ha concluido. Paquete Entregado al cliente.
+            </div>
+          )}
 
-            <button type="button" onClick={ejecutarActualizacion} style={{ padding: '12px 24px', backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-              Confirmar y Registrar Hito
-            </button>
-          </div>
-
-          {/* Historial de Movimientos (Línea de tiempo) */}
           <h4 style={{ margin: '0 0 12px 0', color: '#334155' }}>Trazabilidad Histórica</h4>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {datosGuia.historial.map((h: any, index: number) => (
+            {datosGuia.historial?.map((h: any, index: number) => (
               <li key={index} style={{ padding: '12px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  {/* Aquí cambiamos h.estado por h.estado_movimiento */}
                   <strong style={{ color: '#0f172a' }}>{h.estado_movimiento}</strong>
                   <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>Operario: {h.empleado}</div>
                 </div>
                 <div style={{ fontSize: '13px', color: '#475569' }}>
-                  {new Date(h.fecha_hora).toLocaleString()}
+                  {new Date(h.fecha_hora).toLocaleString('es-BO')}
                 </div>
               </li>
             ))}

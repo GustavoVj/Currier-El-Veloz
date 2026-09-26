@@ -21,6 +21,7 @@ export default function Recepcion() {
         id_modalidad_pago: '',
         peso: '',
         dimensiones: '',
+        recargo_volumen: '',
         declaracion_legal: false
     });
 
@@ -74,9 +75,17 @@ export default function Recepcion() {
     );
 
     // Calcular precio estimado en pantalla (multiplicando peso por tarifa base)
-    const precioEstimado = tarifaAplicable && form.peso
-        ? (parseFloat(form.peso) * parseFloat((tarifaAplicable as any).precio_base_kilo)).toFixed(2)
-        : '0.00';
+    const esSobre = form.id_tipo_encomienda === '1';
+
+    // Calcular precio estimado en pantalla incluyendo el recargo
+    const calcularTotal = () => {
+        if (!tarifaAplicable || !form.peso) return '0.00';
+        const costoBase = parseFloat(form.peso) * parseFloat((tarifaAplicable as any).precio_base_kilo);
+        // Si es sobre, el recargo es 0; si no, toma lo que digitó el empleado
+        const recargo = esSobre ? 0 : (parseFloat(form.recargo_volumen) || 0);
+        return (costoBase + recargo).toFixed(2);
+    };
+    const precioEstimado = calcularTotal();
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
@@ -94,18 +103,19 @@ export default function Recepcion() {
         }
 
         try {
-            // Recuperar ID de empleado desde el token o sesión almacenada si la hay, o enviar ID genérico/token
-            // (Asumiendo que el backend extrae el id_empleado o lo recibe en el body)
-            const payload = {
-                id_remitente: remitenteEncontrado.cliente?.id_persona || remitenteEncontrado.id_persona,
-                id_destinatario: destinatarioEncontrado.cliente?.id_persona || destinatarioEncontrado.id_persona,
-                id_tarifa: (tarifaAplicable as any).id_tarifa,
-                id_modalidad_pago: form.id_modalidad_pago,
-                peso: form.peso,
-                dimensiones: form.id_tipo_encomienda === '1' ? '' : form.dimensiones,
-                declaracion_legal: form.declaracion_legal ? 1 : 0,
-                id_empleado: 1
-            };
+            const idEmpleadoLogueado = localStorage.getItem('id_empleado') || '1';
+
+const payload = {
+    id_remitente: remitenteEncontrado.cliente?.id_persona || remitenteEncontrado.id_persona,
+    id_destinatario: destinatarioEncontrado.cliente?.id_persona || destinatarioEncontrado.id_persona,
+    id_tarifa: (tarifaAplicable as any).id_tarifa,
+    id_modalidad_pago: form.id_modalidad_pago,
+    peso: form.peso,
+    dimensiones: esSobre ? '' : form.dimensiones,
+    recargo_volumen: esSobre ? 0 : (parseFloat(form.recargo_volumen) || 0), 
+    declaracion_legal: form.declaracion_legal ? 1 : 0,
+    id_empleado: idEmpleadoLogueado // <-- Aquí llamas a la variable, eliminando la advertencia
+};
 
             const res = await axios.post('http://localhost:3001/api/encomiendas', payload);
             setResultadoExito(res.data);
@@ -115,7 +125,7 @@ export default function Recepcion() {
             setForm({
                 ci_remitente: '', ci_destinatario: '', id_origen: '', id_destino: '',
                 id_forma_envio: '', id_tipo_encomienda: '', id_modalidad_pago: '',
-                peso: '', dimensiones: '', declaracion_legal: false
+                peso: '', dimensiones: '', recargo_volumen: '', declaracion_legal: false
             });
             setRemitenteEncontrado(null);
             setDestinatarioEncontrado(null);
@@ -216,7 +226,11 @@ export default function Recepcion() {
                 </div>
 
                 {/* SECCIÓN 3: PESO, VOLUMEN Y PAGO */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '18px', color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px', marginBottom: '16px' }}>
+                    3. Peso, Volumen y Pago
+                </h3>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                     <div>
                         <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Peso (Kg)</label>
                         <input type="number" step="0.1" style={inputStyle} placeholder="0.0" value={form.peso} onChange={e => setForm({ ...form, peso: e.target.value })} required />
@@ -225,11 +239,26 @@ export default function Recepcion() {
                         <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Dimensiones (Volumen)</label>
                         <input
                             type="text"
-                            style={{ ...inputStyle, backgroundColor: form.id_tipo_encomienda === '1' ? '#f1f5f9' : '#fff' }}
-                            placeholder={form.id_tipo_encomienda === '1' ? 'No aplica para sobres (NULL)' : 'Ej: 30x20x10 cm'}
-                            value={form.dimensiones}
+                            style={{ ...inputStyle, backgroundColor: esSobre ? '#f1f5f9' : '#fff' }}
+                            placeholder={esSobre ? 'No aplica para sobres (NULL)' : 'Ej: 30x20x10 cm'}
+                            value={esSobre ? '' : form.dimensiones}
                             onChange={e => setForm({ ...form, dimensiones: e.target.value })}
-                            disabled={form.id_tipo_encomienda === '1'} // Normalización: deshabilitado si es sobre
+                            disabled={esSobre}
+                        />
+                    </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                    <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Recargo por Volumen (Bs.)</label>
+                        <input
+                            type="number"
+                            step="0.10"
+                            style={{ ...inputStyle, backgroundColor: esSobre ? '#f1f5f9' : '#fff' }}
+                            placeholder={esSobre ? 'No aplica (0.00)' : 'Ej: 15.50'}
+                            value={esSobre ? '' : form.recargo_volumen}
+                            onChange={e => setForm({ ...form, recargo_volumen: e.target.value })}
+                            disabled={esSobre}
                         />
                     </div>
                     <div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { Truck, Package, MapPin } from 'lucide-react';
 
+
 export default function LandingPage() {
   const [tarifas, setTarifas] = useState([]);
 
@@ -27,8 +28,8 @@ export default function LandingPage() {
           <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', letterSpacing: '1px' }}>LA VELOZ</h1>
         </div>
         <div>
-          <Link to="/tracking" style={{ color: '#cbd5e1', textDecoration: 'none', marginRight: '24px', fontWeight: '500' }}>Rastrear Paquete</Link>
-          <Link to="/login" style={{ padding: '10px 20px', backgroundColor: '#3b82f6', color: 'white', textDecoration: 'none', borderRadius: '6px', fontWeight: 'bold' }}>Acceso Empleados</Link>
+          <Link to="/rastreo" style={{ padding: '10px 10px', backgroundColor: '#3b82f6', color: 'white', textDecoration: 'none', borderRadius: '6px', fontWeight: 'bold' }}>Rastrear Paquete</Link>
+          <Link to="/login" style={{ padding: '10px 10px', backgroundColor: '#3b82f6', color: 'white', textDecoration: 'none', borderRadius: '6px', fontWeight: 'bold' }}>Acceso Empleados</Link>
         </div>
       </nav>
 

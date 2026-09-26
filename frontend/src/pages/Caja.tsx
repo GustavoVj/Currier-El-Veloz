@@ -19,17 +19,18 @@ export default function Caja() {
     cargarBandeja();
   }, []);
 
-  const procesarCobro = async (id_encomienda: number, guia: string) => {
-    const confirmar = window.confirm(`¿Confirmas la recepción del dinero para la guía ${guia}?`);
+  const procesarCobro = async (id_encomienda: number, guia: string, monto_total: number) => {
+    const confirmar = window.confirm(`¿Confirmas la recepción de Bs. ${monto_total} para la guía ${guia}?`);
     if (!confirmar) return;
 
     try {
       const res = await axios.post('http://localhost:3001/api/caja/cobrar', {
         id_encomienda: id_encomienda,
-        id_empleado_cajero: 1 // Ajustar con el ID de la cajera en sesión
+        id_empleado_cajero: localStorage.getItem('id_empleado') || '1',
+        monto_cobrado: monto_total // <-- AHORA SÍ ENVIAMOS EL DINERO AL BACKEND
       });
       setMensaje({ texto: res.data.mensaje, tipo: 'exito' });
-      cargarBandeja(); // Recargar la tabla para que desaparezca la cobrada
+      cargarBandeja(); 
       
       setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4000);
     } catch (error: any) {
@@ -91,7 +92,7 @@ export default function Caja() {
                   </td>
                   <td style={{ padding: '16px', textAlign: 'center' }}>
                     <button 
-                      onClick={() => procesarCobro(p.id_encomienda, p.codigo_guia)}
+                      onClick={() => procesarCobro(p.id_encomienda, p.codigo_guia, p.monto_total)}
                       style={{ padding: '8px 16px', backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
                       <Wallet size={16} /> Cobrar

@@ -21,7 +21,11 @@ export default function Login() {
 
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('rol', response.data.rol);
-      localStorage.setItem('nombre', response.data.nombre); // <-- AGREGAR ESTA LÍNEA
+      localStorage.setItem('nombre', response.data.nombre);
+      
+      // Búsqueda segura del ID del empleado (soporta diferentes formatos del backend)
+      const idEmp = response.data.id_empleado || response.data.usuario?.id_empleado || '1';
+      localStorage.setItem('id_empleado', idEmp.toString());
       
       navigate('/dashboard');
     } catch (err: any) {

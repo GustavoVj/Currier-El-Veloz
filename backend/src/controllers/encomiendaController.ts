@@ -22,7 +22,7 @@ export const registrarEncomienda = async (req: Request, res: Response): Promise<
     try {
         const { 
             id_remitente, id_destinatario, id_tarifa, id_modalidad_pago, 
-            peso, dimensiones, declaracion_legal, id_empleado 
+            peso, dimensiones, recargo_volumen, declaracion_legal, id_empleado 
         } = req.body;
 
         // Auditoría Legal
@@ -40,17 +40,18 @@ export const registrarEncomienda = async (req: Request, res: Response): Promise<
         }
 
         const precio_base = parseFloat(tarifaRows[0].precio_base_kilo);
-        const monto_total = parseFloat(peso) * precio_base;
+        const recargo = parseFloat(recargo_volumen) || 0;
+        const monto_total = (parseFloat(peso) * precio_base) + recargo;
 
         // Inserción adaptada exactamente a los nombres de tus columnas
         // Inserción adaptada a tus columnas (sin la columna 'estado')
         const [resultadoPaquete]: any = await pool.query(`
             INSERT INTO encomienda 
-            (id_remitente, id_destinatario, id_tarifa, id_modalidad, peso_kg, precio_base_aplicado, monto_total, descripcion_contenido) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'Contenido verificado legalmente')
+            (id_remitente, id_destinatario, id_tarifa, id_modalidad, peso_kg, volumen_m3, recargo_volumen, precio_base_aplicado, monto_total, descripcion_contenido) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Contenido verificado legalmente')
         `, [
             id_remitente, id_destinatario, id_tarifa, id_modalidad_pago, 
-            peso, precio_base, monto_total
+            peso, (dimensiones || null), recargo, precio_base, monto_total
         ]);
 
         const id_encomienda = resultadoPaquete.insertId;
@@ -64,7 +65,7 @@ export const registrarEncomienda = async (req: Request, res: Response): Promise<
         await pool.query(`
             INSERT INTO historial_movimiento (id_encomienda, id_empleado, estado_movimiento) 
             VALUES (?, ?, 'Registrado - Recepción en origen')
-        `, [id_encomienda, id_empleado || 1]);
+        `, [id_encomienda, id_empleado]);
 
         res.status(201).json({ 
             mensaje: 'Encomienda procesada y tarificada exitosamente',

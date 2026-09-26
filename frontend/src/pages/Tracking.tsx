@@ -84,7 +84,7 @@ export default function Tracking() {
 
             {/* CONTENEDOR DE LA LÍNEA DE TIEMPO CORREGIDO */}
             <div style={{ position: 'relative', marginTop: '10px' }}>
-              {resultado.movimientos.map((mov: any, index: number) => (
+              {resultado.movimientos?.map((mov: any, index: number) => (
                 <div key={index} style={{ position: 'relative', paddingLeft: '44px', paddingBottom: index === resultado.movimientos.length - 1 ? '0' : '32px' }}>
                   
                   {/* Línea conectora central (ahora en left: 13px) */}

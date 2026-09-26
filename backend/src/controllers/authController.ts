@@ -6,10 +6,9 @@ import pool from '../config/db.js';
 export const login = async (req: Request, res: Response): Promise<void> => {
     try {
         const { username, password } = req.body;
-
-        // 1. Buscar el usuario en la BD (Haciendo JOIN para obtener su rol)
+        // 1. Buscar el usuario en la BD (Agregamos e.id_empleado a la consulta)
         const [rows]: any = await pool.query(`
-            SELECT u.id_usuario, u.password_hash, c.nombre_cargo AS rol, p.nombre_completo
+            SELECT u.id_usuario, u.password_hash, c.nombre_cargo AS rol, p.nombre_completo, e.id_empleado
             FROM USUARIO u
             INNER JOIN EMPLEADO e ON u.id_empleado = e.id_empleado
             INNER JOIN CARGO c ON e.id_cargo = c.id_cargo
@@ -41,7 +40,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         res.json({ 
             token, 
             rol: usuario.rol,
-            nombre: usuario.nombre_completo // <-- CORREGIDO: Usar usuario.nombre_completo
+            nombre: usuario.nombre_completo, // <-- CORREGIDO: Usar usuario.nombre_completo
+            id_empleado: usuario.id_empleado
         });
 
     } catch (error) {
